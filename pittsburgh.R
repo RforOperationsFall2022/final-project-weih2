@@ -10,7 +10,7 @@ library(maps)
 library(maptools)
 library(rgeos)
 library(leaflet)
-
+library(geojsonsf)
 
 # data source
 # https://data.wprdc.org/dataset/city-pittsburgh-operating-budget/ -- 2 plotly, 3 input, datatable, get raw data
@@ -21,10 +21,8 @@ library(leaflet)
 # Load data 
 budget <- read.csv('Pittsburgh_budget.csv')
 school <- read.csv('publish_school.csv')
-print(budget)
-
-# Handle null
-pdf(NULL)
+bridge <- geojson_sf("https://services1.arcgis.com/YZCmUqbcsUpOKfj7/ArcGIS/rest/services/PGHBridges/FeatureServer/0/query?where=FID+%3C+%27143%27&objectIds=&time=&geometry=&geometryType=esriGeometryEnvelope&inSR=&spatialRel=esriSpatialRelIntersects&resultType=none&distance=0.0&units=esriSRUnit_Meter&relationParam=&returnGeodetic=false&outFields=*&returnGeometry=true&featureEncoding=esriDefault&multipatchOption=xyFootprint&maxAllowableOffset=&geometryPrecision=&outSR=&defaultSR=&datumTransformation=&applyVCSProjection=false&returnIdsOnly=false&returnUniqueIdsOnly=false&returnCountOnly=false&returnExtentOnly=false&returnQueryGeometry=false&returnDistinctValues=false&cacheHint=false&orderByFields=&groupByFieldsForStatistics=&outStatistics=&having=&resultOffset=&resultRecordCount=&returnZ=false&returnM=false&returnExceededLimitFeatures=true&quantizationParameters=&sqlFormat=none&f=pgeojson&token=")
+print(bridge)
 
 # Header
 header <- dashboardHeader(title = "Pittsburgh Operating Information")
@@ -36,7 +34,7 @@ sidebar <- dashboardSidebar(
     menuItem("Public School Map",icon = icon("map-location-dot"),tabName = "mapM"),
     menuItem("Budget Chart",icon = icon("bar-chart"), tabName = "chartM"),    
     menuItem("Budget Table", icon = icon("table"), tabName = "tableM"),
-    menuItem("API Chart", icon = icon("line-chart"), tabName = "apiM"),
+    menuItem("API Table", icon = icon("bridge"), tabName = "apiM"),
     
     # Select variables to plot 
     # Municipal
@@ -89,7 +87,13 @@ body <- dashboardBody(tabItems(
           fluidPage(
             box(title = "Table", 
                 dataTableOutput("table"), width = 12,
-                downloadButton('downloadData', 'Download'))))
+                downloadButton('downloadData', 'Download')))),
+  
+  # table
+  tabItem("apiM",
+          fluidPage(
+            box(title = "Table", 
+                dataTableOutput("apitable"), width = 12)))
 ))
 
 ui <- dashboardPage(header, sidebar, body)
@@ -147,17 +151,21 @@ server <- function(input, output) {
       write.csv(filterData(), file)
     }
   )
+  # api table
+  output$apitable <- DT::renderDataTable({
+    subset(bridge, select = c(Latitude,Longitude,FID,geometry))
+  })
   # map
   output$schoolMap <- renderLeaflet({
     leaflet(school) %>% addTiles() %>%
       addMarkers(lng = school$longitude,lat = school$latitude,popup = ~paste("<h5>",name,"</h5>",
-                                                                             address,"<br>"))
+                                                                             address,"<br>"))%>%
+      addPolylines(lng = school$longitude,lat = school$latitude)
   })
   
   observe({
     proxy <- leafletProxy("map", data = school)
     proxy %>% clearControls()
-    
     leafletProxy("map", data = school) %>%
       clearShapes() %>% clearMarkerClusters() %>%
       addMarkers(lng = school$longitude,lat = school$latitude,popup = ~paste("<h5>",name,"</h5>",
